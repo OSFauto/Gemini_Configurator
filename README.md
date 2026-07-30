@@ -1,1 +1,1 @@
-# Gemini-Configuration
+# Gemini_Configurator
