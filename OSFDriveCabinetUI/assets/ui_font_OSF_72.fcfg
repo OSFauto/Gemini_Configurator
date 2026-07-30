@@ -1,0 +1,14 @@
+{
+  "codename": "OSF_72",
+  "ttf_path": "/assets/TheSansBlack-Caps.otf",
+  "bin_path": "/assets\\ui_font_OSF_72.bin",
+  "c_path": "/assets\\ui_font_OSF_72.c",
+  "cfg_path": "/assets\\ui_font_OSF_72.fcfg",
+  "size": 72,
+  "bpp": 1,
+  "letters": 0,
+  "ranges": [],
+  "symbols": "UH36120",
+  "customparams": "--no-compress --no-prefilter",
+  "uploaded": false
+}

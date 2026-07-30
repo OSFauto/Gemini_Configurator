@@ -1,0 +1,21 @@
+SET(SOURCES ui_IPConfigScreen.c
+    ui_MotorConfigScreen.c
+    ui_HomeScreen.c
+    ui_SleepScreen.c
+    ui_DriveStatusScreen.c
+    ui_StartupScreen.c
+    ui.c
+    ui_comp_hook.c
+    ui_helpers.c
+    ui_img_gv6k_png.c
+    ui_img_1999303404.c
+    fonts/ui_font_OSF24.c
+    fonts/ui_font_OSF42.c
+    fonts/ui_font_OSF_72.c
+    fonts/ui_font_OSF_REG_12.c
+    fonts/ui_font_OSF_REG_22.c
+    fonts/ui_font_OSF_REG_30.c
+    fonts/ui_font_OSF_REG_42.c
+    fonts/ui_font_OSF_REG_16.c)
+
+add_library(ui ${SOURCES})
