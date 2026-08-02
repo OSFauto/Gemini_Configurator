@@ -1,121 +1,108 @@
-#include "Configs.h"
-#include "Arduino_H7_Video.h"
-#include "Arduino_GigaDisplayTouch.h"
-#include "lvgl.h"
-#include "ui.h"
-// #include <Arduino_USBHostMbed5.h>    // USB Host for GIGA R1
-// #include <FATFileSystem.h>           // FAT file system (mbed)
-#include <stdio.h> 
-// #include "mbed_error.h"
-// #include "mbed.h"
-// #include "mbed_mem_trace.h"
+/*
+ =====================================================================
+ * OSF GV6K Configuration GUI for Arduino Giga with Display Shielf
+ * Original Author: Colt McGuire
+ * Source/Repository: https://github.com/OSFauto/Gemini_Configurator
+ * Date Updated: 07/31/2026
+ * Notes: 
+ =====================================================================
+ */
+
+// Include all required libraries and external files
+#include "Configs.h"                                    // Custom defined header file of the motor configs (made using python script)
+#include "Arduino_H7_Video.h"                           // Arduino library for display
+#include "Arduino_GigaDisplayTouch.h"                   // Arduino library for touch interface
+#include "lvgl.h"                                       // Embedded graphics library
+#include "ui.h"                                         // UI created using Squareline Studio
+#include <stdio.h>                                      // Standard C++ library
 
 // SETUP GIGA
-Arduino_H7_Video Display(800, 480, GigaDisplayShield); 
-Arduino_GigaDisplayTouch Touch;
-GDTpoint_t touchPoints[5];
-
-// // Setup USB for images
-// USBHostMSD usb;
-// mbed::FATFileSystem fs("usb");
+Arduino_H7_Video Display(800, 480, GigaDisplayShield);  // Define the giga display 
+Arduino_GigaDisplayTouch Touch;                         // Define the touch interface
+GDTpoint_t touchPoints[5];                              // Define the array of touch points
 
 // SLEEP
 bool isSleeping = false;
-const int SLEEP_DELAY_MS = 30000; // Sleep after 30 seconds
-unsigned long lastActivityTime = 0;
+const int SLEEP_DELAY_MS = 30000;                       // Sleep after 30 seconds
+unsigned long lastActivityTime = 0;                     // Track the last time there was an interaction
 
 // CONNECTION PINGING
-const int CHECK_CONNECTION_MS = 20000; // Check connection every 10 seconds
-const int TIMEOUT_TIME_MS = 1000; // If we dont get a response in 1 seconds, we have timed out
-unsigned long lastConnectedTime = 0;
-unsigned long connectionFirstCheck = 0;
-unsigned long connectionLastCheck = 0;
+const int CHECK_CONNECTION_MS = 20000;                  // Check connection every 10 seconds
+const int TIMEOUT_TIME_MS = 1000;                       // If we dont get a response in 1 seconds, we have timed out
+unsigned long lastConnectedTime = 0;                    // Track the last time we were connected (check connection)
+unsigned long connectionFirstCheck = 0;                 // Track the time we started checking connection (timeout time)
+unsigned long connectionLastCheck = 0;                  // Track the time between connection checks
 
-// COMMUNICATION INTERLOCK
-bool communicating = false;
-String pendingCommand = "";
+// COMMUNICATION INTERLOCK (mostly unimplimented as it was causing more problems than solving)
+bool communicating = false;                             // Are we currently sending or expecting a command
+String pendingCommand = "";                             // String to store overlapping commands
 
 // VAR USED IN MULTIPLE SCREENS
-String driveName = "";
-bool connected = false;
-String motorType = "";
-String ipAddress = "";
-const int logSize = 10;
-int curLog = 0;
-String logs[logSize];
-//static unsigned long lastBlink = 0;
-
+String driveName = "";                                  // Name of the drive (U12, etc)
+bool connected = false;                                 // Are we connected or not
+String motorType = "";                                  // Name of the current configured motor (DMTR)
+String ipAddress = "";                                  // IP Address from the drive
+const int logSize = 10;                                 // Number of logs to save
+int curLog = 0;                                         // Current index in log array to achieve a looping list
+String logs[logSize];                                   // Array of logs
 
 // VAR USED IN IPCONFIG
-char newIpAddress[][4] = {"---","---","---","---"};
-int currentField = 3;
+char newIpAddress[][4] = {"---","---","---","---"};     // Array of the user inputted ip address fields
+int currentField = 3;                                   // The ip address field currently selected (default to the final field)
 
 // VAR USED IN MOTOR CONFIG
-String selectedMotorConfig = "MPP115 3C1E";
-bool sentConfig = false;
+String selectedMotorConfig = "MPP115 3C1E";             // String of the selected motor config option from the dropdown
+bool sentConfig = false;                                // Bool to prevent double sending motor config
 
 // VAR USED IN DRIVE STATUS
-String driveStatusPrint = "";
+String driveStatusPrint = "";                           // Drive status info to display on the status screen
 
 
 // Setup Variables, UI, and Connection
 void setup() {
+  // Begin Serial Communication
   Serial.begin(9600);
-  delay(3000);
+  delay(1000);
 
+  // Begin display and touch interface
   Display.begin();
   Touch.begin();
+
+  // Initialize UI and load startup screen
   ui_init();
-  //setupUIBackgrounds();
   lv_scr_load(ui_StartupScreen);
   
   // Setup UI Elements
   lv_label_set_text(ui_LoadingScreenText, "Loading UI Elements");
-  lv_timer_handler();
+  lv_timer_handler();   // Call to refresh display before loop is running
   setupEventHandlers();
   setupUIOptions();
   
+  // Allow recoloration of sections of the ip label
   lv_label_set_recolor(ui_IPDisplay, true);
 
   // Setup Serial communication
-  
   lv_label_set_text(ui_LoadingScreenText, "Starting Serial Communication");
   lv_timer_handler();
-  // Begin Serial to communicate with pc, Serial2(blue-19tx, yellow-18rx) to communicate with driver
-  //Serial.begin(9600);
+  // Begin Serial2(blue-19tx, yellow-18rx) to communicate with drive
   Serial2.begin(9600);
 
   // Attempt to connect to drive
-  
   lv_label_set_text(ui_LoadingScreenText, "Connecting to Drive");
   lv_timer_handler();
   establishContact();
 
   // Read initial drive info and set UI values
-  
   lv_label_set_text(ui_LoadingScreenText, "Retrieving Drive Info");
   lv_timer_handler();
   getDriveInfo();
   lv_timer_handler();
-  // Load Home Screen 
+
+  // Load Home Screen once setup is complete
   lv_scr_load(ui_HomeScreen);
   lv_timer_handler();
+  // Start sleep timer once setup is complete
   unsigned long lastActivityTime = millis();
-
-  // TEMP TESTING SETUP FOR NO DRIVE
-  // int lastAreaIp = ipAddress.substring(ipAddress.lastIndexOf(".")+1).toInt();
-  // currentField = 3;
-  // setIpLabel();
-  // //Serial.println(ipAddress);
-  // //Serial.println(lastAreaIp);
-  // // replace leading zeros with "-" (index 10)
-  // int d1 = lastAreaIp / 100 == 0? 10: lastAreaIp / 100; // get 100s place
-  // int d2 = (lastAreaIp % 100) / 10; // get 10s place
-  // int d3 = lastAreaIp % 10; // get 1s place
-  // // set rollers
-  // lv_roller_set_selected(ui_IPDigit1, d1, LV_ANIM_OFF);
-  // lv_roller_set_selected(ui_IPDigit2, d2, LV_ANIM_OFF);
-  // lv_roller_set_selected(ui_IPDigit3, d3, LV_ANIM_OFF);
 }
 
 // Attach event handler callback functions to all interactable widgets
@@ -159,26 +146,27 @@ void setupUIOptions()
 
   // MOTOR Config
   lv_dropdown_set_options(ui_MotorConfigSelect, "MPP115 3C1E\nMPP100 3D1E\nMPP142 4D1E\nBE232 DJ\nBE233 DJ\nBE343 JJ");
-  //lv_obj_add_flag(ui_SpinnerMotorConfig, LV_OBJ_FLAG_HIDDEN);
 }
 
 // Initiate handshake with GV6K
 void establishContact() {
+  // Send "ECHO" to drive until we receive ECHO1 confirmation (meaning the drive is communicating)
   String response = "";
   while(response != "ECHO,*ECHO1")
   {
     lv_timer_handler();
     // Verify connection with GV6K
     Serial.println("connecting...");
+    // If Serial2 has not sent data back, send check again and delay .3s
     while (Serial2.available() <= 0) {
       lv_timer_handler();
       Serial2.println("echo");
       delay(300);
     }
+    // Read the response from the drive
     response = receiveData();
-    //Serial.println(response == "ECHO,*ECHO1");
   }
-  // Once connected read the serial buffer to discard handshake data
+  // Once connected, update connected time and update labels
   Serial.println("connected");
   connected = true;
   lastConnectedTime = millis();
@@ -194,14 +182,11 @@ void establishContact() {
 // Check if connection is still running
 void checkConnection()
 {
+  // if this is the first time running the function this checking cycle
   if(connectionFirstCheck == 0)
   {
-    // if(communicating)
-    // {
-    //   return;
-    // }
-    // first check of this cycle
     connectionFirstCheck = millis();
+    // if we have been disconnected, update UI
     if (connected == false)
     {
       lv_label_set_text(ui_StatusLabelHome, "Not Connected");
@@ -209,6 +194,7 @@ void checkConnection()
       lv_label_set_text(ui_StatusLabelMotorConfig, "Not Connected");
       lv_label_set_text(ui_StatusLabelStatus, "Not Connected");
     }
+    // if we arent disconnected yet, update UI 
     else
     {
       lv_label_set_text(ui_StatusLabelHome, "Connecting...");
@@ -216,17 +202,18 @@ void checkConnection()
       lv_label_set_text(ui_StatusLabelMotorConfig, "Connecting...");
       lv_label_set_text(ui_StatusLabelStatus, "Connecting...");
     }
-    //communicating = true;
+    // Send connection check
     Serial2.println("echo");
     connectionLastCheck = millis();
   }
-  //Read Response 
+  // Read Response if available
   if(Serial2.available() > 0)
   {
+    // Check for expected response
     String response = receiveData();
     if(response == "ECHO,*ECHO1")
     {
-      // SUCCESS
+      // SUCCESS - Update ui and tracking variables
       connectionFirstCheck = 0;
       communicating = false;
       connected = true;
@@ -238,15 +225,16 @@ void checkConnection()
       return;
     }
   }
-  // move loop to loop function to reduce blocking
+  // Wait 300ms between connection checks per connection check cycle
   if(millis() - connectionLastCheck > 300)
   {
     Serial2.println("echo");
     connectionLastCheck = millis();
   }
+  // Once time after first check of the cycle exceeds timeout time, connection check has failed
   if(millis() - connectionFirstCheck > TIMEOUT_TIME_MS)
   {
-    //lastConnectedTime = millis();
+    // FAIL - Update UI and tracking variables
     connected = false;
     communicating = false;
     connectionFirstCheck = 0;
@@ -254,7 +242,6 @@ void checkConnection()
     lv_label_set_text(ui_StatusLabelIPConfig, "Not Connected");
     lv_label_set_text(ui_StatusLabelMotorConfig, "Not Connected");
     lv_label_set_text(ui_StatusLabelStatus, "Not Connected");
-    // TODO? reset home screen labels?
     logInfo("Connection Timeout");
     return;
   }
@@ -262,20 +249,25 @@ void checkConnection()
 }
 
 // Read drive type, motor type, ip config, and other required details
-// Call everytime we enter motor config screen?
 void getDriveInfo()
 {
+  // Send all check commands at once and recieve response as one string
   sendCommand("TREV:TNT:DMTR:CMDDIR:SGINTE:LJRAT:LDAMP");
   String setupData = receiveSetupData();
+  // Split response into individual command response for easy parsing
   String TREV = setupData.substring(setupData.indexOf("TREV"), setupData.indexOf(","));
   String TNT = setupData.substring(setupData.indexOf("TNT"), setupData.indexOf(", DMTR"));
+  // Get value responses for simple commands
   String DMTR = setupData.substring(setupData.indexOf("*DMTR")+5, setupData.indexOf(", CMDDIR"));
   String CMDDIR = setupData.substring(setupData.indexOf("*CMDDIR")+7,setupData.indexOf(", SGINTE"));
   String SGINTE = setupData.substring(setupData.indexOf("*SGINTE")+7,setupData.indexOf(", LJRAT"));
   String LJRAT = setupData.substring(setupData.indexOf("*LJRAT")+6,setupData.indexOf(", LDAMP"));
   String LDAMP = setupData.substring(setupData.indexOf("*LDAMP")+6,setupData.indexOf(", ,"));
   String temp = "";
+
+  // Process TREV
   TREV.trim();
+  // Save landmark indices
   int GVIdx = TREV.indexOf("  ")+8;
   int TREVIdx = TREV.indexOf("*TREV");
   // OS
@@ -288,19 +280,19 @@ void getDriveInfo()
   driveStatusPrint += driveName;
   driveStatusPrint += "\n";
   driveName = driveName.substring(driveName.indexOf('-')+1);
-  // firmware
+  // Firmware
   driveStatusPrint += "Firmware Version: "+TREV.substring(TREV.indexOf(" ", GVIdx)+1,TREV.lastIndexOf(" "))+"\n";
   // Flash Boot
   driveStatusPrint += "Flash Boot Revision: "+TREV.substring(TREV.lastIndexOf(" ")+1)+"\n";
 
-
-  // TNT for netstats
-  // process ip
+  // Process TNT
+  // Parse TNT response into each ip field and map into newIpAddress array
   temp = TNT.substring(TNT.indexOf("*GEM6K IP address:")+19, TNT.indexOf(",",TNT.indexOf("*GEM6K IP address:")));
   temp.substring(0, temp.indexOf(".")).toCharArray(newIpAddress[0], sizeof(newIpAddress[0]));
   temp.substring(temp.indexOf(".")+1, temp.indexOf(".",4)).toCharArray(newIpAddress[1], sizeof(newIpAddress[1]));
   temp.substring(temp.indexOf(".",4)+1, temp.lastIndexOf(".")).toCharArray(newIpAddress[2], sizeof(newIpAddress[2]));
   temp.substring(temp.lastIndexOf(".")+1).toCharArray(newIpAddress[3], sizeof(newIpAddress[3]));
+  // Save last field of ip as a number for future processing
   int lastAreaIp = temp.substring(temp.lastIndexOf(".")+1).toInt();
   ipAddress = temp;
   TNT.replace("*", "");
@@ -308,8 +300,9 @@ void getDriveInfo()
   driveStatusPrint += TNT;
   driveStatusPrint += "\n";
 
-  // DMTR tells motor config
+  // Process DMTR
   String motorTypeTemp = motorType;
+  // Map DMTR response to motor type names
   if(DMTR == "1803")
   {
     motorTypeTemp = "BE232 DJ";
@@ -340,13 +333,11 @@ void getDriveInfo()
     motorTypeTemp = "-------";
   }
   motorType = motorTypeTemp;
-  //driveStatusPrint += "Current Motor: "+motorTypeTemp+"\n";
 
-  // cmddir, sginte, ljrat, ldamp
+  // Append CMDDIR, SGINTE, LJRAT, and LDAMP to drive status
   driveStatusPrint += "CMDDIR: "+CMDDIR+"\nSGINTE: "+SGINTE+"\nLJRAT: "+LJRAT+"\nLDAMP: "+LDAMP;
-  Serial.println(driveStatusPrint);
-  Serial.println(LDAMP);
-  // UPDATE UI
+
+  // -----UPDATE UI-------
   // Home
   char ipBuffer[16];
   ipAddress.toCharArray(ipBuffer, 16);
@@ -364,6 +355,7 @@ void getDriveInfo()
   // IPConfig
   currentField = 3;
   setIpLabel();
+  // Get each digit of the last field for ip input
   // replace leading zeros with "-" (index 10)
   int d1 = lastAreaIp / 100 == 0? 10: lastAreaIp / 100; // get 100s place
   int d2 = (lastAreaIp % 100) / 10; // get 10s place
@@ -372,20 +364,20 @@ void getDriveInfo()
   lv_roller_set_selected(ui_IPDigit1, d1, LV_ANIM_OFF);
   lv_roller_set_selected(ui_IPDigit2, d2, LV_ANIM_OFF);
   lv_roller_set_selected(ui_IPDigit3, d3, LV_ANIM_OFF);
+
   // Drive Status
   char statusBuf[500];
   driveStatusPrint.toCharArray(statusBuf, sizeof(statusBuf));
   lv_textarea_set_text(ui_StatusReadout, statusBuf);
-  //Serial.println("Drive status labels NOT set");
 }
 
+// Called every frame
 void loop() {
-  //print_memory_info();
+  // Handle UI updates
   lv_timer_handler();
   
   // Wake up on touch
   if (Touch.getTouchPoints(touchPoints) > 0) {
-    //Serial.println("Touch");
     lastActivityTime = millis();
     if (isSleeping) {
       isSleeping = false;
@@ -399,31 +391,29 @@ void loop() {
     lv_scr_load(ui_SleepScreen);
   }
 
+  // Check connection after set time
   if (millis() - lastConnectedTime > CHECK_CONNECTION_MS)
   {
-    // start connection check. send message and check for response once per loop until timeout
-    checkConnection(); // start
-    
-  }
-
-  if(pendingCommand != "" && !communicating)
-  {
-    //sendCommand(pendingCommand);
+    checkConnection();
   }
 }
 
 // Write given string to display logs and update UIs
 void logInfo(String log)
 {
+  // Print log to Serial monitor if pc is connected
   Serial.println(log);
-  String logText = "";
-  // wrap around
+
+  // Create a wrapping log array
   logs[curLog] = log;
   curLog++;
   if(curLog >= logSize)
   {
     curLog = 0;
   }
+
+  // Loop through all logs in array and add them to the display with most recent on the bottom
+  String logText = "";
   for(int i = 0; i <logSize; i++)
   {
     int idx = curLog+i < logSize? curLog+i : curLog+i-logSize;
@@ -439,9 +429,10 @@ void logInfo(String log)
   lv_textarea_set_text(ui_ConsoleReadStatus, buf);
 }
 
-// Sends command with value over serial to drive
+// Sends command object over serial to drive
 void sendCommand(Command cmd)
 {
+  // Lockout commands if a command is already in process
   if(communicating && pendingCommand == "")
   {
     pendingCommand = cmd.ToString();
@@ -450,64 +441,69 @@ void sendCommand(Command cmd)
   }
   // Clear previous buffer
   Serial2.readString();
-  // send command to drive as well as to serial monitor
+  // Send command to drive and log the send command
   communicating = true;
   Serial.println(cmd.ToString());
   Serial2.println(cmd.ToString());
   logInfo("SENT: " + cmd.ToString());
+  // Clear communication lockout
   communicating = false;
   pendingCommand = "";
 }
 
-// Sends command with no value over serial
+// Sends command string over serial to drive
 void sendCommand(String cmd)
 {
+  // Lockout commands if a command is already in process
   if(communicating && pendingCommand == "")
   {
     pendingCommand = cmd;
     logInfo("communication in progress, adding to pending cue: " + pendingCommand);
-    //return;
   }
   // Clear previous buffer
   Serial2.readString();
+  // Send command to drive as well as to serial monitor
   communicating = true;
-  // send command to drive as well as to serial monitor
   Serial2.println(cmd);
   logInfo("SENT: " + cmd);
+  // Clear communication lockout
   communicating = false;
   pendingCommand = "";
 }
 
+// Receive the multi-command response from drive status check
 String receiveSetupData()
 {
+  // Communication lockout
   if(communicating)
   {
     logInfo("already communicating; returning from receive");
     return "ERR; Already Communicating";
   }
   communicating = true;
+
   String result = "";
   int count = 0;
   bool startOfLine = false;
   bool firstN = false;
   bool end = false;
   unsigned long lastCheck = millis();
-  // Allow multiple iterations to recieve response (25*100 = 2.5 seconds)
+  // Allow multiple iterations to recieve response
   while (!end && count <= 300)
   {
-    
+    // Check every 25ms
     if(millis() - lastCheck < 25)
     {
       continue;
     }
     lastCheck = millis();
-    // "*line 1\r\nline2\r\r\n"
-    // "*Ldamp0.000\r\n>\n\r\n"
+    // Process pending serial data
     while (Serial2.available() > 0)
     {
+      // Update UI and process current character
       lv_timer_handler();
       char curChar = Serial2.read();
-      //Serial.print("CHAR: "+(String)curChar+"\t SOL:"+(String)startOfLine+"\tfirstR:"+(String)firstR+"\tend:"+(String)end+"\tcount"+(String)count+"\n");
+      // If end has been reached, clean up result and return it
       if(end)
       {
         Serial2.readString();
@@ -520,22 +516,29 @@ String receiveSetupData()
         communicating = false;
         return result;
       }
+      // Perform action based on type of character received
       switch(curChar) 
       {
+        // Carriage return character received
         case '\r':
           break;
+        // Newline character received
         case '\n':
+          // If we have received two \n characters, it is the end of the transmission
           if(firstN)
           {
             end = true;
           }
+          // If this is the first \n in a row, end the line but keep receiving data
           else
           {
+            // Add comma between lines
             result += ',';
             startOfLine = false;
             firstN = true;
           }
           break;
+        // Non special character received, add to the data as is and clear any received newline character count
         default:
           firstN = false;
           result += curChar;
@@ -551,35 +554,38 @@ String receiveSetupData()
   return result;
 }
 
+// Receive command responses
 String receiveData()
 {
-  
+  // Communication lockout
   if(communicating)
   {
     logInfo("already communicating; returning from receive");
     return "ERR; Already Communicating";
   }
   communicating = true;
+
   String result = "";
   int count = 0;
   bool startOfLine = false;
   bool firstR = false;
   bool end = false;
   unsigned long lastCheck = millis();
-  // Allow multiple iterations to recieve response (25*100 = 2.5 seconds)
+  // Allow multiple iterations to recieve response
   while (!end && count <= 300)
   {
-    
+    // Check every 25ms
     if(millis() - lastCheck < 25)
     {
       continue;
     }
     lastCheck = millis();
-    // "*line 1\r\nline2\r\r\n"
+    // Process pending serial data
     while (Serial2.available() > 0)
     {
+      // Process current character
       char curChar = Serial2.read();
-      //Serial.print("CHAR: "+(String)curChar+"\t SOL:"+(String)startOfLine+"\tfirstR:"+(String)firstR+"\tend:"+(String)end+"\tcount"+(String)count+"\n");
+      // If end has been reached, clean up result and return it
       if(end)
       {
         Serial2.readString();
@@ -592,14 +598,18 @@ String receiveData()
         communicating = false;
         return result;
       }
+      // Perform action based on type of character received
       switch(curChar) 
       {
+        // Carriage return character received
         case '\r':
+          // If this is the first \r in a row, flip bool
           if (!firstR)
           {
             // first return
             firstR = true;
           }
+          // If we have received two \r characters, it is the end of the transmission
           else
           {
             // second return in a row, we are at EOT
@@ -607,6 +617,7 @@ String receiveData()
             firstR = false;
           }
           break;
+        // Newline character received
         case '\n':
           if(!firstR)
           {
@@ -619,13 +630,12 @@ String receiveData()
           startOfLine = false;
           firstR = false;
           break;
+        // Non special character received, add to the data as is and clear any received newline character count
         default:
           firstR = false;
           result += curChar;
           break;
       }
-      
-      
     }
     count++;
   }
@@ -634,12 +644,12 @@ String receiveData()
   return result;
 }
 
+// Send Motor Config
 bool sendConfig(Command config[], int configSize)
 {
   if(communicating)
   {
     logInfo("Mid communication, please try again");
-    //return false;
   }
   logInfo("Sending Config...");
   String configStr = "";
@@ -677,7 +687,6 @@ bool configMotor(String motorType)
 {
   bool success;
 
-  //Serial.println(motorType);
   // Send matching config type to selected motor type
   if(motorType == "MPP115 3C1E")
   {
@@ -705,9 +714,9 @@ bool configMotor(String motorType)
   }
   else
   {
-    //logInfo("[ERR] Motor type not recognize: " + motorType);
     success = false;
   }
+  // Refresh drive info and send DRESET
   getDriveInfo();
   sendCommand("DRESET");
   receiveData();
@@ -721,7 +730,6 @@ bool configNetwork(String ip)
     logInfo("Mid communication, please try again");
     return false;
   }
-  // ip must be separated by commas; 192,102,....
   // Set IP
   sendCommand("NTADDR"+ip);
   String addrResp = receiveData();
@@ -731,7 +739,6 @@ bool configNetwork(String ip)
   sendCommand("RESET");
   receiveData();
   establishContact();
-  // TODO Check that addr and ntfen response are correct
   return true;
 }
 
@@ -749,7 +756,6 @@ void setIpLabel()
       ipDisplay += (String)newIpAddress[i]+(i==3?"":".");
     }
   }
-  //Serial.println("IP DISPLAY: "+ipDisplay);
   char ipBuf[30];
   ipDisplay.toCharArray(ipBuf, sizeof(ipBuf));
   lv_label_set_text(ui_IPDisplay, ipBuf);
@@ -758,7 +764,6 @@ void setIpLabel()
 // Go to HomeScreen
 void Home_evt_handler(lv_event_t * e)
 {
-  //getDriveInfo();
   lv_scr_load(ui_HomeScreen);
 }
 
@@ -779,7 +784,6 @@ void MotorConfig_evt_handler(lv_event_t * e)
 void DriveStatus_evt_handler(lv_event_t * e)
 {
   lv_scr_load(ui_DriveStatusScreen);
-  //getDriveInfo();
 }
 
 static void delayed_ip_config_task(lv_timer_t * timer) {
@@ -880,15 +884,12 @@ void IPNextField_evt_handler(lv_event_t * e)
     currentField -= 4;
   }
   String areaIpStr = newIpAddress[currentField];
-  //Serial.println("IP NEXT: "+areaIpStr);
   areaIpStr.replace("-","0");
-  //Serial.println("IP NEXT: "+areaIpStr);
   int areaIp = areaIpStr.toInt();
   // replace leading zeros with "-" (index 10)
   int d1 = areaIp / 100 == 0? 10: areaIp / 100; // get 100s place
   int d2 = (areaIp % 100) / 10; // get 10s place
   int d3 = areaIp % 10; // get 1s place
-  //Serial.println((String)d1+" "+(String)d2+" "+(String)d3);
   // set rollers
   lv_roller_set_selected(ui_IPDigit1, d1, LV_ANIM_ON);
   lv_roller_set_selected(ui_IPDigit2, d2, LV_ANIM_ON);
