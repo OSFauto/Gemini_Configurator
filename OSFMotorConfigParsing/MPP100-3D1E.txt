@@ -1,0 +1,68 @@
+
+;Motor Setup
+DMTR 2722		;Motor ID (MPP1003D1E-xxxx)
+DMTIC 10.28		;Continuous Current (Amps-RMS)
+DMTICD 21.12		;Continuous Current Derating (% derating at rated speed)
+DMTKE 50.2		;Motor Ke (Volts (0-to-peak)/krpm)
+DMTRES 0.64		;Motor Winding Resistance (Ohm)
+DMTJ 372.874		;Motor Rotor Inertia (kg*m*m*10e-6)
+DPOLE 4		;Number of Motor Pole Pairs
+DMTW 59.0		;Motor Rated Speed (rev/sec)
+DMTIP 32.49		;Peak Current (Amps-RMS)
+DMTLMN 2.1		;Minimum Motor Inductance (mH)
+DMTLMX 3.3		;Maximum Motor Inductance (mH)
+DMTD 0.000405	;Motor Damping (Nm/rad/sec)
+DMTRWC 0.19		;Motor Thermal Resistance (degrees Celsius/Watt)
+DMTTCM 40.0		;Motor Thermal Time Constant (minutes)
+DMTTCW 5.00		;Motor Winding Time Constant (minutes)
+DMTAMB 40.00	;Motor Ambient Temperature (degrees Celsius)
+DMTMAX 150.00	;Maximum Motor Winding Temperature (degrees Celsius)
+DHALL  1		;Disable Hall Sensor Checking
+MXPLUS  0		;MAX PLUS MOTOR
+ENCPOL 0		;Encoder Polarity
+DMTLQS  0		;Set Q Axis Inductance Saturation
+DMTLDS  0		;Set D Axis Inductance Saturation
+DTHERM  0		;Disable motor thermal switch input
+
+
+;Drive Setup
+DMODE 12		;Drive Control Mode
+DPWM 0		;Drive PWM Frequency (kHz)
+SFB 1			;Encoder Feedback
+ERES 8000		;Encoder Resolution (counts/rev)
+ORES 8000		;Encoder Output Resolution (counts/rev)
+DMEPIT 0.00		;Electrical Pitch (mm)
+SHALL 0		;Invert Hall Sensors
+DMTLIM 19.0		;Torque Limit (Nm)
+DMTSCL 19.0		;Torque Scaling (Nm)
+DMVLIM 83.000000	;Velocity Limit (rev/sec)
+
+;Load Setup
+LJRAT 0.0		;Load-to-Rotor Inertia Ratio
+LDAMP 0.0000	;Load Damping (Nm/rad/sec)
+
+;Fault Setup
+FLTDSB 1		;Fault on Drive Disable Enable
+SMPER 8000		;Maximum Allowable Position Error (counts)
+SMVER 0.000000	;Maximum Allowable Velocity Error (rev/sec)
+DIFOLD 0		;Current Foldback Enable
+
+;Servo Tuning
+DIBW 500		;Current Loop Bandwidth (Hz)
+DVBW 50		;Velocity Loop Bandwidth (Hz)
+DPBW 18.00		;Position Loop Bandwidth (Hz)
+SGPSIG 1.000	;Velocity/Position Bandwidth Ratio
+SGIRAT 1.000	;Current Damping Ratio
+SGVRAT 1.000	;Velocity Damping Ratio
+SGPRAT 1.000	;Position Damping Ratio
+DNOTAF 0		;Notch Filter A Frequency (Hz)
+DNOTAQ 1.0		;Notch Filter A Quality Factor
+DNOTAD 0.0000	;Notch Filter A Depth
+DNOTBF 0		;Notch Filter B Frequency (Hz)
+DNOTBQ 1.0		;Notch Filter B Quality Factor
+DNOTBD 0.0000	;Notch Filter B Depth
+DNOTLG 0		;Notch Lag Filter Break Frequency (Hz)
+DNOTLD 0		;Notch Lead Filter Break Frequency (Hz)
+SGINTE 1		;Integrator Option
+SGVF 100		;Velocity Feedforward Gain (%)
+SGAF 100		;Acceleration Feedforward Gain (%)
