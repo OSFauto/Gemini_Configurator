@@ -1,10 +1,10 @@
 /*
  =====================================================================
- * OSF GV6K Configuration GUI for Arduino Giga with Display Shielf
+ * OSF GV6K Configuration GUI for Arduino Giga with Display Shield
  * Original Author: Colt McGuire
  * Source/Repository: https://github.com/OSFauto/Gemini_Configurator
  * Date Updated: 07/31/2026
- * Notes: 
+ * Notes: Requires UI folder added to local libraries to function (see README)
  =====================================================================
  */
 
@@ -647,6 +647,7 @@ String receiveData()
 // Send Motor Config
 bool sendConfig(Command config[], int configSize)
 {
+  // Log potential communication overlap
   if(communicating)
   {
     logInfo("Mid communication, please try again");
@@ -658,15 +659,19 @@ bool sendConfig(Command config[], int configSize)
   // Go through config list
   for (int i=0; i<configSize; i++)
   {
+    // Concat all config commands to one message until buffer size
     configStr += config[i].ToString();
     configStr += ":";
+    // Send the command batch once we approach the gv6k recommended max of 100 characters
     if(i >= configSize-1 || configStr.length() + config[i+1].ToString().length()+1 >= 95)
     {
       logInfo("Sending and checking config batch...");
       sendCommand(configStr);
+      // Check that response is what we sent
       result = receiveData();
       result.replace(",","");
       result.replace(" ","");
+      // Result will be true if all batches are true
       resultBool = resultBool && result.substring(0,result.lastIndexOf(":")).equalsIgnoreCase(configStr.substring(0,configStr.lastIndexOf(":")));
       configStr = "";
     }
@@ -678,11 +683,13 @@ bool sendConfig(Command config[], int configSize)
   }
   else
   {
+    // If something failed, log it
     logInfo("ERROR: Motor configuration failed");
   }
   return resultBool;
 }
 
+// Call sendConfig with appropriate config list based on motor type
 bool configMotor(String motorType)
 {
   bool success;
@@ -723,9 +730,11 @@ bool configMotor(String motorType)
   return success;
 }
 
+// Set IP and enable network
 bool configNetwork(String ip)
 {
-    if(communicating)
+  // Communication interlock
+  if(communicating)
   {
     logInfo("Mid communication, please try again");
     return false;
@@ -736,30 +745,37 @@ bool configNetwork(String ip)
   // Enable Ethernet
   sendCommand("NTFEN1");
   String ntfenResp = receiveData();
+  // Send reset to update IP address according to command reference
   sendCommand("RESET");
   receiveData();
   establishContact();
   return true;
 }
 
+// Format IP label to include color coding
 void setIpLabel()
 {
   String ipDisplay = "";
   for (int i = 0; i < 4; i++)
   {
+    // Make the current field green using inline color command
     if(currentField == i)
     {
       ipDisplay += (String)"#00ff00 "+(String)newIpAddress[i]+(i == 3? "#" : "#.");
     }
+    // Display other fields as default color
     else
     {
       ipDisplay += (String)newIpAddress[i]+(i==3?"":".");
     }
   }
+  // Write the string to the label
   char ipBuf[30];
   ipDisplay.toCharArray(ipBuf, sizeof(ipBuf));
   lv_label_set_text(ui_IPDisplay, ipBuf);
 }
+
+// --------------UI NAVIGATION HANDLERS---------------------------
 
 // Go to HomeScreen
 void Home_evt_handler(lv_event_t * e)
@@ -777,7 +793,6 @@ void IPConfig_evt_handler(lv_event_t * e)
 void MotorConfig_evt_handler(lv_event_t * e)
 {
   lv_scr_load(ui_MotorConfigScreen);
-  
 }
 
 // Go to DriveStatusScreen
@@ -786,35 +801,45 @@ void DriveStatus_evt_handler(lv_event_t * e)
   lv_scr_load(ui_DriveStatusScreen);
 }
 
+// --------------IP CONFIG SCREEN---------------------------
+
+// Send IP Address to drive and open network after UI updates
 static void delayed_ip_config_task(lv_timer_t * timer) {
-  // This runs on the next LVGL tick after the UI has updated
+  // Parse IP and send it
   String ipToSend = "";
   ipToSend += (String)newIpAddress[0] + "," + (String)newIpAddress[1] + ","+ (String)newIpAddress[2] + ","+ (String)newIpAddress[3];
   configNetwork(ipToSend);
+  // Update drive info
   getDriveInfo();
+  // Reset UI
   lv_obj_add_flag(ui_SpinnerIPConfig, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(ui_SendButtonIPConfigLabel, "Send");
-  // Delete the one-shot timer
+  // Delete the timer
   lv_timer_del(timer);
 }
 
 // Send IP Address to drive and open network
 void SendIP_evt_handler(lv_event_t * e)
 {
+  // Unhide the spinner and update button label
   lv_obj_clear_flag(ui_SpinnerIPConfig, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(ui_SendButtonIPConfigLabel, "Sending...");
+  // Call delayed function after UI updates
   lv_timer_create(delayed_ip_config_task, 10, NULL);
 }
 
-
+// Set IP digits based on user roller input
 void setIpDigits()
 {
+  // Get selected indices of rollers
   int selIdx1 = lv_roller_get_selected(ui_IPDigit1);
   int selIdx2 = lv_roller_get_selected(ui_IPDigit2);
   int selIdx3 = lv_roller_get_selected(ui_IPDigit3);
+  // Convert indices to digits
   char newDigit1 = (char)(selIdx1 + '0');
   char newDigit2 = (char)(selIdx2 + '0');
   char newDigit3 = (char)(selIdx3 + '0');
+  // Convert an index of 10 to a '-'
   if(selIdx1 == 10)
   {
     newDigit1 = '-';
@@ -827,9 +852,11 @@ void setIpDigits()
   {
     newDigit3 = '-';
   }
+  // Set array accordingly
   newIpAddress[currentField][0] = newDigit1;
   newIpAddress[currentField][1] = newDigit2;
   newIpAddress[currentField][2] = newDigit3;
+  // Update UI label
   setIpLabel();
 }
 
@@ -851,91 +878,107 @@ void SetIPDigit3_evt_handler(lv_event_t * e)
   setIpDigits();
 }
 
-// Change IP Field to previous
+// Change selected IP field to previous
 void IPPrevField_evt_handler(lv_event_t * e)
 {
+  // Decrement/wrap field index
   currentField --;
   if(currentField < 0)
   {
     currentField += 4;
   }
+  // Get current area string
   String areaIpStr = newIpAddress[currentField];
   areaIpStr.replace("-","0");
+  // Parse digits from the area string
   int areaIp = areaIpStr.toInt();
-  // replace leading zeros with "-" (index 10)
-  int d1 = areaIp / 100 == 0? 10: areaIp / 100; // get 100s place
-  int d2 = (areaIp % 100) / 10; // get 10s place
-  int d3 = areaIp % 10; // get 1s place
-
-  // set rollers
+  int d1 = areaIp / 100 == 0? 10: areaIp / 100;     // Get 100s place
+  int d2 = (areaIp % 100) / 10;                     // Get 10s place
+  int d3 = areaIp % 10;                             // Get 1s place
+  // Set rollers
   lv_roller_set_selected(ui_IPDigit1, d1, LV_ANIM_ON);
   lv_roller_set_selected(ui_IPDigit2, d2, LV_ANIM_ON);
   lv_roller_set_selected(ui_IPDigit3, d3, LV_ANIM_ON);
+  // Update UI and local values
   setIpDigits();
   setIpLabel();
 }
 
-// Change IP Field to next
+// Change selected IP field to next
 void IPNextField_evt_handler(lv_event_t * e)
 {
+  // Increment/wrap field index
   currentField++;
   if(currentField > 3)
   {
     currentField -= 4;
   }
+  // Get current area string
   String areaIpStr = newIpAddress[currentField];
   areaIpStr.replace("-","0");
+  // Parse digits from the area string
   int areaIp = areaIpStr.toInt();
-  // replace leading zeros with "-" (index 10)
-  int d1 = areaIp / 100 == 0? 10: areaIp / 100; // get 100s place
-  int d2 = (areaIp % 100) / 10; // get 10s place
-  int d3 = areaIp % 10; // get 1s place
-  // set rollers
+  int d1 = areaIp / 100 == 0? 10: areaIp / 100;     // Get 100s place
+  int d2 = (areaIp % 100) / 10;                     // Get 10s place
+  int d3 = areaIp % 10;                             // Get 1s place
+  // Set rollers
   lv_roller_set_selected(ui_IPDigit1, d1, LV_ANIM_ON);
   lv_roller_set_selected(ui_IPDigit2, d2, LV_ANIM_ON);
   lv_roller_set_selected(ui_IPDigit3, d3, LV_ANIM_ON);
+  // Update UI and local values
   setIpDigits();
   setIpLabel();
 }
 
+// --------------MOTOR CONFIG SCREEN---------------------------
+
+// Send Motor Configuration to drive after UI updates
 static void delayed_motor_config_task(lv_timer_t * timer) {
-  // This runs on the next LVGL tick after the UI has updated
+  // Call configure motor function
   configMotor(selectedMotorConfig);
-  
   // Reset UI
   lv_label_set_text(ui_SendButtonMotorConfigLabel, "Send Configuration");
   lv_obj_add_flag(ui_SpinnerMotorConfig, LV_OBJ_FLAG_HIDDEN);
-  
-  // Delete the one-shot timer
+  // Delete the timer
   lv_timer_del(timer);
+  // Release lockout
   sentConfig = false;
 }
 
 // Send Motor Configuration to drive
 void SendMotorConfig_evt_handler(lv_event_t * e)
 {
+  // Lockout to prevent double sending config
   if(sentConfig)
   {
     return;
   }
   sentConfig = true;
+  // Unhide the spinner and update button label
   lv_obj_clear_flag(ui_SpinnerMotorConfig, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(ui_SendButtonMotorConfigLabel, "Sending...");
+  // Call delayed function after UI updates
   lv_timer_create(delayed_motor_config_task, 10, NULL);
-  
 }
 
 // Set selected motor config based on user input
 void SetMotorConfig_evt_handler(lv_event_t * e)
 {
+  // Get selected dropdown value and write to variable
   char buf[64];
   lv_dropdown_get_selected_str(ui_MotorConfigSelect, buf, sizeof(buf));
   selectedMotorConfig = buf;
 }
 
+
+// --------------DRIVE STATUS SCREEN---------------------------
+
+// Enable drive network connections after UI updates
 static void delayed_enable_task(lv_timer_t * timer)
 {
+  // Send network enable command
   sendCommand("NTFEN1");
+  // Check response
   String res = receiveData().substring(0,6);
   if(res == "NTFEN1")
   {
@@ -945,30 +988,35 @@ static void delayed_enable_task(lv_timer_t * timer)
   {
     logInfo("ERR: Unable to verify NTFEN success, please try again");
   }
-
+  // Reset UI
   lv_label_set_text(ui_EnaNetworkButtonStatusLabel, "Enable\nNetwork");
   lv_obj_add_flag(ui_SpinnerStatus, LV_OBJ_FLAG_HIDDEN);
-  
-  // Delete the one-shot timer
+  // Delete the timer
   lv_timer_del(timer);
 }
 
 // Enable drive network connections
 void EnableNetwork_evt_handler(lv_event_t * e)
 {
+  // Unhide the spinner and update button label
   lv_obj_clear_flag(ui_SpinnerStatus, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(ui_EnaNetworkButtonStatusLabel, "Enabling...");
+  // Call delayed function after UI updates
   lv_timer_create(delayed_enable_task, 10, NULL);
 }
 
+// Factory Reset the drive and enable network connections after UI updates
 static void delayed_factory_reset_task(lv_timer_t * timer) 
 {
-  // This runs on the next LVGL tick after the UI has updated
+  // Send factory reset command
   sendCommand("RFS");
   logInfo("Factory Reset sent, re-establishing connecting...");
+  // Wait for drive to reconnect
   establishContact();
+  // Enable ethernet
   sendCommand("NTFEN1");
   String res = receiveData().substring(0,6);
+  // Ensure ethernet was enabled successfully
   if(res == "NTFEN1")
   {
     logInfo("Network Enable Success");
@@ -977,19 +1025,19 @@ static void delayed_factory_reset_task(lv_timer_t * timer)
   {
     logInfo("ERR: Unable to verify NTFEN success, please try again");
   }
-  
   // Reset UI
   lv_label_set_text(ui_FactoryResetButtonStatusLabel, "Factory\nReset");
   lv_obj_add_flag(ui_SpinnerStatus, LV_OBJ_FLAG_HIDDEN);
-  
-  // Delete the one-shot timer
+  // Delete the timer
   lv_timer_del(timer);
 }
 
 // Factory Reset the drive and enable network connections
 void FactoryReset_evt_handler(lv_event_t * e)
 {
+  // Unhide the spinner and update button label
   lv_obj_clear_flag(ui_SpinnerStatus, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(ui_FactoryResetButtonStatusLabel, "Resetting...");
+  // Call delayed function after UI updates
   lv_timer_create(delayed_factory_reset_task, 10, NULL);
 }
